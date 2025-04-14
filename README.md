@@ -1,139 +1,59 @@
-<h1 align="center">
-    <img alt="cookiecutter Logo" width="200px" src="https://raw.githubusercontent.com/cookiecutter/cookiecutter/3ac078356adf5a1a72042dfe72ebfa4a9cd5ef38/logo/cookiecutter_medium.png">
-</h1>
+# MOUM Project: Multi-Omics Based Drug Response Prediction
 
-<div align="center">
+## Project Overview
 
-[![pypi](https://img.shields.io/pypi/v/cookiecutter.svg)](https://pypi.org/project/cookiecutter/)
-[![python](https://img.shields.io/pypi/pyversions/cookiecutter.svg)](https://pypi.org/project/cookiecutter/)
-[![Build Status](https://github.com/cookiecutter/cookiecutter/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/cookiecutter/cookiecutter/actions)
-[![codecov](https://codecov.io/gh/cookiecutter/cookiecutter/branch/main/graphs/badge.svg?branch=main)](https://codecov.io/github/cookiecutter/cookiecutter?branch=main)
-[![discord](https://img.shields.io/badge/Discord-cookiecutter-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/9BrxzPKuEW)
-[![docs](https://readthedocs.org/projects/cookiecutter/badge/?version=latest)](https://readthedocs.org/projects/cookiecutter/?badge=latest)
-[![Code Quality](https://img.shields.io/scrutinizer/g/cookiecutter/cookiecutter.svg)](https://scrutinizer-ci.com/g/cookiecutter/cookiecutter/?branch=main)
+본 프로젝트는 multi-omics 데이터를 활용한 약물 반응 예측 모델 개발을 목표로 합니다.
 
-</div>
+## Core Components
 
-# Cookiecutter
+### 1. Multi-omics Data Integration Method (윤진)
+- 다양한 omics 데이터의 통합 방법론 개발
+- 데이터 통합을 통한 세포 특성 이해 향상
 
-Create projects swiftly from **cookiecutters** (project templates) with this command-line utility. Ideal for generating Python package projects and more.
+### 2. Cell-type Specific Foundation Model (경덕)
+- 세포 타입별 특화된 기초 모델 개발
+- 세포 특성을 반영한 데이터 표현 학습
 
-- [Documentation](https://cookiecutter.readthedocs.io)
-- [GitHub](https://github.com/cookiecutter/cookiecutter)
-- [PyPI](https://pypi.org/project/cookiecutter/)
-- [License (BSD)](https://github.com/cookiecutter/cookiecutter/blob/main/LICENSE)
+### 3. Drug Response Prediction (대성)
+- 약물 반응 예측 모델 개발
+- 주요 구성 요소:
+  - Cell type specific omics data encoding
+  - Drug representation encoding
 
-## Installation
+## Development Pipeline
 
-Install cookiecutter using pip package manager:
-```
-# pipx is strongly recommended.
+### Step 1: Omics Data Integration Model
+1. 필요한 omics 데이터 선정
+2. 데이터 통합 모델 개발
+3. 간단한 downstream task를 통한 성능 검증
+4. Cell type specific foundation model 적용 검토
+
+### Step 2: Drug Response Predictor 개발
+1. Drug embedding 개발
+2. Multiomics 데이터와 drug embedding 통합
+3. 최종 Drug reaction predictor 구현
+
+---
+
+## Original Project Template Information
+
+### 쿠키커터 프로젝트 소개
+
+쿠키커터는 프로젝트 템플릿(쿠키커터)에서 신속하게 프로젝트를 생성할 수 있는 커맨드라인 유틸리티입니다. Python 패키지 프로젝트 생성 등에 이상적입니다.
+
+### 주요 기능
+
+- **크로스 플랫폼:** Windows, Mac, Linux 지원
+- **사용자 친화적:** Python 지식 불필요
+- **다양성:** Python 3.7부터 3.12까지 호환
+- **다중 언어 지원:** 모든 언어 또는 마크업 형식의 템플릿 사용 가능
+
+### 설치 방법
+
+```bash
+# pipx 사용 권장
 pipx install cookiecutter
 
-# If pipx is not an option,
-# you can install cookiecutter in your Python user directory.
+# pipx를 사용할 수 없는 경우
 python -m pip install --user cookiecutter
 ```
-
-## Features
-
-- **Cross-Platform:** Supports Windows, Mac, and Linux.
-- **User-Friendly:** No Python knowledge required.
-- **Versatile:** Compatible with Python 3.7 to 3.12.
-- **Multi-Language Support:** Use templates in any language or markup format.
-
-### For Users
-
-#### Quick Start
-
-The recommended way to use Cookiecutter as a command line utility is to run it with [`pipx`](https://pypa.github.io/pipx/), which can be installed with `pip install pipx`, but if you plan to use Cookiecutter programmatically, please run `pip install cookiecutter`.
-
-**Use a GitHub template**
-
-```bash
-# You'll be prompted to enter values.
-# Then it'll create your Python package in the current working directory,
-# based on those values.
-# For the sake of brevity, repos on GitHub can just use the 'gh' prefix
-$ pipx run cookiecutter gh:audreyfeldroy/cookiecutter-pypackage
-```
-
-**Use a local template**
-
-```bash
-$ pipx run cookiecutter cookiecutter-pypackage/
-```
-
-**Use it from Python**
-
-```py
-from cookiecutter.main import cookiecutter
-
-# Create project from the cookiecutter-pypackage/ template
-cookiecutter('cookiecutter-pypackage/')
-
-# Create project from the cookiecutter-pypackage.git repo template
-cookiecutter('gh:audreyfeldroy//cookiecutter-pypackage.git')
-```
-
-#### Detailed Usage
-
-- Generate projects from local or remote templates.
-- Customize projects with `cookiecutter.json` prompts.
-- Utilize pre-prompt, pre- and post-generate hooks.
-
-[Learn More](https://cookiecutter.readthedocs.io/en/latest/usage.html)
-
-### For Template Creators
-
-- Utilize unlimited directory nesting.
-- Employ Jinja2 for all templating needs.
-- Define template variables easily with `cookiecutter.json`.
-
-[Learn More](https://cookiecutter.readthedocs.io/en/latest/tutorials/)
-
-## Available Templates
-
-Discover a variety of ready-to-use templates on [GitHub](https://github.com/search?q=cookiecutter&type=Repositories).
-
-### Special Templates
-
-- [cookiecutter-pypackage](https://github.com/audreyfeldroy/cookiecutter-pypackage)
-- [cookiecutter-django](https://github.com/pydanny/cookiecutter-django)
-- [cookiecutter-pytest-plugin](https://github.com/pytest-dev/cookiecutter-pytest-plugin)
-- [cookiecutter-plone-starter](https://github.com/collective/cookiecutter-plone-starter)
-
-## Community
-
-Join the community, contribute, or seek assistance.
-
-- [Troubleshooting Guide](https://cookiecutter.readthedocs.io/en/latest/troubleshooting.html)
-- [Stack Overflow](https://stackoverflow.com/questions/tagged/cookiecutter)
-- [Discord](https://discord.gg/9BrxzPKuEW)
-- [File an Issue](https://github.com/cookiecutter/cookiecutter/issues?q=is%3Aopen)
-- [Contributors](AUTHORS.md)
-- [Contribution Guide](CONTRIBUTING.md)
-
-### Support
-
-- Star us on [GitHub](https://github.com/cookiecutter/cookiecutter).
-- Stay tuned for upcoming support options.
-
-### Feedback
-
-We value your feedback. Share your criticisms or complaints constructively to help us improve.
-
-- [File an Issue](https://github.com/cookiecutter/cookiecutter/issues?q=is%3Aopen)
-
-### Waiting for a Response?
-
-- Be patient and consider reaching out to the community for assistance.
-- For urgent matters, contact [@audreyfeldroy](https://github.com/audreyfeldroy) for consultation or custom development.
-
-## Code of Conduct
-
-Adhere to the [PyPA Code of Conduct](https://www.pypa.io/en/latest/code-of-conduct/) during all interactions in the project's ecosystem.
-
-## Acknowledgements
-
-Created and led by [Audrey Roy Greenfeld](https://github.com/audreyfeldroy), supported by a dedicated team of maintainers and contributors.
