@@ -4,6 +4,57 @@
 
 본 프로젝트는 multi-omics 데이터를 활용한 약물 반응 예측 모델 개발을 목표로 합니다.
 
+## 설치 방법
+
+```
+conda activate MOUM_TENSORFLOW
+```
+
+### 1. 기본 패키지 설치
+```bash
+pip install -r requirements.txt
+```
+
+### 2. TensorFlow 설치
+TensorFlow와 관련 패키지들은 시스템 환경에 따라 설치 방법이 다릅니다.
+
+#### macOS (M1/M2)
+```bash
+# TensorFlow 설치
+pip install tensorflow-macos
+pip install tensorflow-metal
+
+# TensorFlow GNN 관련 패키지 설치
+pip install tensorflow-gnn
+```
+
+#### macOS (Intel)
+```bash
+# TensorFlow 설치
+pip install tensorflow
+
+# TensorFlow GNN 관련 패키지 설치
+pip install tensorflow-gnn
+```
+
+#### Linux
+```bash
+# TensorFlow 설치
+pip install tensorflow
+
+# TensorFlow GNN 관련 패키지 설치
+pip install tensorflow-gnn
+```
+
+### 3. 설치 확인
+```python
+import tensorflow as tf
+import tensorflow_gnn as tfgnn
+
+print(f"TensorFlow version: {tf.__version__}")
+print(f"TensorFlow GNN version: {tfgnn.__version__}")
+```
+
 ## Core Components
 
 ### 1. Multi-omics Data Integration Method (GNN-based)
@@ -13,13 +64,17 @@
   - GNN을 통한 omics 간 관계 학습
   - 조건부 생성 모델을 통한 데이터 증강
 - 모델 구조:
-  - OmicsGenerator: 개별 omics 데이터 생성
-  - MultiOmicsGenerator: GNN 기반 통합 생성
-  - ConditionalMultiOmicsGenerator: 조건부 생성
+  - OmicsEncoder: 개별 omics 데이터 인코딩
+  - MultiOmicsGNN: GNN 기반 통합 모델
+  - HeterogeneousOmicsGNN: 이종 그래프 기반 통합 모델
 
-### 2. Cell-type Specific Foundation Model
-- 세포 타입별 특화된 기초 모델 개발
-- 세포 특성을 반영한 데이터 표현 학습
+### 2. Advanced GNN-based Generator
+- 고급 GNN 기반 생성 모델
+- 주요 기능:
+  - Attention 기반 그래프 구성
+  - Multi-head attention을 통한 조건부 생성
+  - Residual connection을 통한 안정적인 학습
+  - Layer normalization을 통한 학습 안정화
 
 ### 3. Drug Response Prediction
 - 약물 반응 예측 모델 개발
@@ -80,18 +135,18 @@
 
 ### 1. GNN-based Multi-omics Integration
 ```python
-class MultiOmicsGenerator:
-    - OmicsGenerator: 개별 omics 데이터 생성
+class MultiOmicsGNN:
+    - OmicsEncoder: 개별 omics 데이터 인코딩
     - GNN layers: omics 간 관계 학습
     - Graph construction: Fully connected or predefined adjacency
 ```
 
-### 2. Conditional Generation
+### 2. Advanced GNN Generator
 ```python
-class ConditionalMultiOmicsGenerator:
-    - Condition encoder: 조건 정보 인코딩
-    - Latent space manipulation: 조건 정보 통합
-    - Conditional generation: 조건에 따른 데이터 생성
+class AdvancedMultiOmicsGenerator:
+    - AttentionGraphConstructor: Attention 기반 그래프 구성
+    - ResidualGNNLayer: Residual connection이 있는 GNN 레이어
+    - Multi-head attention: 조건부 생성 지원
 ```
 
 ## Development Pipeline
@@ -103,7 +158,7 @@ class ConditionalMultiOmicsGenerator:
 
 ### Step 2: Model Development
 1. GNN 기반 통합 모델 구현
-2. 조건부 생성 모델 구현
+2. 고급 GNN 생성 모델 구현
 3. 모델 훈련 및 검증
 
 ### Step 3: Evaluation
@@ -115,12 +170,12 @@ class ConditionalMultiOmicsGenerator:
 
 ### 진행중
 - [ ] Multi-omics Data Integration Method 개발
-- [ ] Cell-type Specific Foundation Model 구현
+- [ ] Advanced GNN Generator 구현
 - [ ] Drug Response Prediction 모델 개발
 
 ### 완료
 - [x] GNN 기반 multi-omics 통합 모델 구현
-- [x] 조건부 생성 모델 구현
+- [x] 고급 GNN 생성 모델 구현
 
 ### 보류
 

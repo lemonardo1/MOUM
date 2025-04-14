@@ -1,5 +1,5 @@
 """
-Advanced GNN-based generator for multi-omics data integration.
+Advanced GNN-based generator for multi-omics data integration in TensorFlow.
 
 This module implements an enhanced version of the GNN-based generator with:
 1. Attention-based graph construction
@@ -8,16 +8,15 @@ This module implements an enhanced version of the GNN-based generator with:
 4. Layer normalization for stable training
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, GATConv, SAGEConv, GINConv
-from torch_geometric.data import Data, Batch
+import tensorflow as tf
+import tensorflow_gnn as tfgnn
+from tensorflow.keras import layers, Model
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout, LayerNormalization, MultiHeadAttention
 
 
-class AttentionGraphConstructor(nn.Module):
+class AttentionGraphConstructor(Model):
     """
-    Attention-based graph constructor.
+    Attention-based graph constructor in TensorFlow.
     
     This module learns to construct a graph by computing attention scores
     between nodes in the latent space.
@@ -38,49 +37,46 @@ class AttentionGraphConstructor(nn.Module):
         self.latent_dim = latent_dim
         self.head_dim = latent_dim // num_heads
         
-        # Linear transformations for query, key, and value
-        self.query = nn.Linear(latent_dim, latent_dim)
-        self.key = nn.Linear(latent_dim, latent_dim)
-        self.value = nn.Linear(latent_dim, latent_dim)
+        # Multi-head attention
+        self.mha = MultiHeadAttention(
+            num_heads=num_heads,
+            key_dim=self.head_dim,
+            dropout=dropout
+        )
         
-        self.dropout = nn.Dropout(dropout)
-        self.layer_norm = nn.LayerNorm(latent_dim)
+        self.layer_norm = LayerNormalization()
+        self.dropout = Dropout(dropout)
         
-    def forward(self, x):
+    def call(self, x, training=False):
         """
         Compute attention scores and construct the graph.
         
         Args:
-            x (torch.Tensor): Input latent vectors
-            
+            x (tf.Tensor): Input latent vectors
+            training (bool, optional): Whether the model is in training mode. Defaults to False.
+        
         Returns:
-            torch.Tensor: Attention-based adjacency matrix
+            tuple: (Updated node features, attention scores)
         """
-        batch_size = x.size(0)
+        batch_size = tf.shape(x)[0]
         
-        # Linear transformations
-        q = self.query(x).view(batch_size, -1, self.num_heads, self.head_dim)
-        k = self.key(x).view(batch_size, -1, self.num_heads, self.head_dim)
-        v = self.value(x).view(batch_size, -1, self.num_heads, self.head_dim)
+        # Apply multi-head attention
+        attended_output, attention_scores = self.mha(
+            x, x, x,
+            return_attention_scores=True,
+            training=training
+        )
         
-        # Compute attention scores
-        scores = torch.matmul(q, k.transpose(-2, -1)) / (self.head_dim ** 0.5)
-        attn = F.softmax(scores, dim=-1)
-        attn = self.dropout(attn)
+        # Add & norm
+        x = self.layer_norm(x + attended_output)
+        x = self.dropout(x, training=training)
         
-        # Compute weighted sum
-        out = torch.matmul(attn, v)
-        out = out.transpose(1, 2).contiguous().view(batch_size, -1, self.latent_dim)
-        
-        # Layer normalization
-        out = self.layer_norm(out)
-        
-        return out, attn
+        return x, attention_scores
 
 
-class ResidualGNNLayer(nn.Module):
+class ResidualGNNLayer(Model):
     """
-    GNN layer with residual connections.
+    GNN layer with residual connections in TensorFlow.
     
     This class implements a GNN layer with residual connections and layer normalization
     for better gradient flow and stable training.
@@ -98,49 +94,48 @@ class ResidualGNNLayer(nn.Module):
         super(ResidualGNNLayer, self).__init__()
         
         if gnn_type == 'GCN':
-            self.gnn = GCNConv(in_channels, out_channels)
+            self.gnn = tfgnn.layers.GCNConv(out_channels)
         elif gnn_type == 'GAT':
-            self.gnn = GATConv(in_channels, out_channels)
-        elif gnn_type == 'SAGE':
-            self.gnn = SAGEConv(in_channels, out_channels)
-        elif gnn_type == 'GIN':
-            nn_layer = nn.Sequential(
-                nn.Linear(in_channels, out_channels),
-                nn.ReLU(),
-                nn.Linear(out_channels, out_channels)
-            )
-            self.gnn = GINConv(nn_layer)
+            self.gnn = tfgnn.layers.GATConv(out_channels)
         else:
             raise ValueError(f"Unsupported GNN type: {gnn_type}")
         
-        self.layer_norm = nn.LayerNorm(out_channels)
+        self.layer_norm = LayerNormalization()
         
-    def forward(self, x, edge_index):
+    def call(self, graph, training=False):
         """
         Forward pass through the residual GNN layer.
         
         Args:
-            x (torch.Tensor): Node features
-            edge_index (torch.Tensor): Edge indices
-            
+            graph (tfgnn.GraphTensor): Input graph
+            training (bool, optional): Whether the model is in training mode. Defaults to False.
+        
         Returns:
-            torch.Tensor: Updated node features
+            tfgnn.GraphTensor: Updated graph
         """
         # GNN operation
-        out = self.gnn(x, edge_index)
+        x = graph.node_sets['nodes']['features']
+        out = self.gnn(graph, node_set_name='nodes', feature_name='features')
         
         # Residual connection and layer normalization
-        if x.size(-1) == out.size(-1):
+        if x.shape[-1] == out.shape[-1]:
             out = self.layer_norm(x + out)
         else:
             out = self.layer_norm(out)
-            
-        return out
+        
+        # Update graph features
+        return graph.replace_features(
+            node_sets={
+                'nodes': {
+                    'features': out
+                }
+            }
+        )
 
 
-class AdvancedMultiOmicsGenerator(nn.Module):
+class AdvancedMultiOmicsGenerator(Model):
     """
-    Advanced GNN-based generator for multi-omics data integration.
+    Advanced GNN-based generator for multi-omics data integration in TensorFlow.
     
     This class implements an enhanced version of the multi-omics generator with
     attention-based graph construction, residual connections, and multi-head attention
@@ -174,7 +169,7 @@ class AdvancedMultiOmicsGenerator(nn.Module):
         )
         
         # Create generators for each omics type
-        self.generators = nn.ModuleDict({
+        self.generators = {
             omics_type: OmicsGenerator(
                 input_dim=latent_dim,
                 hidden_dim=hidden_dim,
@@ -182,50 +177,74 @@ class AdvancedMultiOmicsGenerator(nn.Module):
                 dropout=dropout
             )
             for omics_type, dim in omics_dims.items()
-        })
+        }
         
         # Residual GNN layers
-        self.gnn_layers = nn.ModuleList([
+        self.gnn_layers = [
             ResidualGNNLayer(latent_dim, latent_dim, gnn_type)
             for _ in range(num_gnn_layers)
-        ])
+        ]
     
-    def forward(self, latent_vectors, adjacency_matrix=None):
+    def call(self, latent_vectors, adjacency_matrix=None, training=False):
         """
         Forward pass through the advanced multi-omics generator.
         
         Args:
-            latent_vectors (torch.Tensor): Latent vectors for each omics type
-            adjacency_matrix (torch.Tensor, optional): Predefined adjacency matrix. Defaults to None.
+            latent_vectors (tf.Tensor): Latent vectors for each omics type
+            adjacency_matrix (tf.Tensor, optional): Predefined adjacency matrix. Defaults to None.
+            training (bool, optional): Whether the model is in training mode. Defaults to False.
         
         Returns:
             dict: Dictionary mapping omics types to their generated data
         """
         # Construct graph using attention
-        x, attn = self.graph_constructor(latent_vectors)
+        x, attn = self.graph_constructor(latent_vectors, training=training)
         
         # Use predefined adjacency matrix if provided
         if adjacency_matrix is not None:
-            edge_index = adjacency_matrix.nonzero().t().contiguous()
+            edge_index = tf.where(adjacency_matrix)
         else:
             # Use attention scores to construct edges
-            edge_index = attn.topk(k=5, dim=-1)[1].view(-1, 2).t()
+            edge_index = tf.stack([
+                tf.reshape(tf.argsort(attn, axis=-1)[..., -5:], [-1]),
+                tf.reshape(tf.tile(tf.range(tf.shape(attn)[-1]), [5]), [-1])
+            ], axis=0)
+        
+        # Create graph tensor
+        graph = tfgnn.GraphTensor.from_pieces(
+            node_sets={
+                'nodes': tfgnn.NodeSet.from_fields(
+                    sizes=tf.shape(x)[0:1],
+                    features={'features': x}
+                )
+            },
+            edge_sets={
+                'edges': tfgnn.EdgeSet.from_fields(
+                    sizes=tf.shape(edge_index)[1:2],
+                    adjacency=tfgnn.Adjacency.from_indices(
+                        source=('nodes', edge_index[0]),
+                        target=('nodes', edge_index[1])
+                    )
+                )
+            }
+        )
         
         # Apply residual GNN layers
         for gnn_layer in self.gnn_layers:
-            x = gnn_layer(x, edge_index)
+            graph = gnn_layer(graph, training=training)
         
         # Generate omics data for each type
+        x = graph.node_sets['nodes']['features']
         generated_data = {}
         for i, omics_type in enumerate(self.omics_types):
-            generated_data[omics_type] = self.generators[omics_type](x[i])
+            generated_data[omics_type] = self.generators[omics_type](x[i], training=training)
         
         return generated_data
 
 
 class AdvancedConditionalMultiOmicsGenerator(AdvancedMultiOmicsGenerator):
     """
-    Advanced conditional GNN-based generator for multi-omics data integration.
+    Advanced conditional GNN-based generator for multi-omics data integration in TensorFlow.
     
     This class extends the AdvancedMultiOmicsGenerator to support conditional generation
     using multi-head attention.
@@ -257,44 +276,48 @@ class AdvancedConditionalMultiOmicsGenerator(AdvancedMultiOmicsGenerator):
         )
         
         # Multi-head attention for condition integration
-        self.condition_attention = nn.MultiheadAttention(
-            embed_dim=latent_dim,
+        self.condition_attention = MultiHeadAttention(
             num_heads=num_heads,
+            key_dim=latent_dim // num_heads,
             dropout=dropout
         )
         
-        self.condition_projection = nn.Sequential(
-            nn.Linear(condition_dim, latent_dim),
-            nn.LayerNorm(latent_dim)
-        )
+        self.condition_projection = [
+            Dense(latent_dim),
+            LayerNormalization()
+        ]
     
-    def forward(self, latent_vectors, condition, adjacency_matrix=None):
+    def call(self, latent_vectors, condition, adjacency_matrix=None, training=False):
         """
         Forward pass through the advanced conditional multi-omics generator.
         
         Args:
-            latent_vectors (torch.Tensor): Latent vectors for each omics type
-            condition (torch.Tensor): Condition vector
-            adjacency_matrix (torch.Tensor, optional): Predefined adjacency matrix. Defaults to None.
+            latent_vectors (tf.Tensor): Latent vectors for each omics type
+            condition (tf.Tensor): Condition vector
+            adjacency_matrix (tf.Tensor, optional): Predefined adjacency matrix. Defaults to None.
+            training (bool, optional): Whether the model is in training mode. Defaults to False.
         
         Returns:
             dict: Dictionary mapping omics types to their generated data
         """
         # Project condition to latent space
-        condition_embedding = self.condition_projection(condition)
+        condition_embedding = condition
+        for layer in self.condition_projection:
+            condition_embedding = layer(condition_embedding)
         
         # Apply multi-head attention between condition and latent vectors
-        condition_embedding = condition_embedding.unsqueeze(0)  # Add batch dimension
-        latent_vectors = latent_vectors.unsqueeze(0)  # Add batch dimension
+        condition_embedding = tf.expand_dims(condition_embedding, 0)  # Add batch dimension
+        latent_vectors = tf.expand_dims(latent_vectors, 0)  # Add batch dimension
         
         attended_latent, _ = self.condition_attention(
             query=latent_vectors,
             key=condition_embedding,
-            value=condition_embedding
+            value=condition_embedding,
+            training=training
         )
         
         # Remove batch dimension
-        attended_latent = attended_latent.squeeze(0)
+        attended_latent = tf.squeeze(attended_latent, 0)
         
         # Generate data using the attended latent vectors
-        return super().forward(attended_latent, adjacency_matrix) 
+        return super().call(attended_latent, adjacency_matrix, training=training) 

@@ -1,18 +1,19 @@
 """
-Multi-omics data integration using Graph Neural Networks.
+Multi-omics data integration using Graph Neural Networks in TensorFlow.
 
-This module implements a GNN-based approach for integrating multiple types of omics data.
+This module implements a GNN-based approach for integrating multiple types of omics data
+using TensorFlow and TF-GNN.
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, GATConv, SAGEConv, GINConv
-from torch_geometric.data import Data, Batch
+import tensorflow as tf
+import tensorflow_gnn as tfgnn
+from tensorflow.keras import layers, Model
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout, LayerNormalization
+import numpy as np
 
 
-class OmicsEncoder(nn.Module):
-    """Base encoder for individual omics data types."""
+class OmicsEncoder(Model):
+    """Base encoder for individual omics data types in TensorFlow."""
     
     def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.2):
         """
@@ -26,22 +27,25 @@ class OmicsEncoder(nn.Module):
         """
         super(OmicsEncoder, self).__init__()
         
-        self.layers = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, output_dim),
-            nn.BatchNorm1d(output_dim)
-        )
+        self.dense1 = Dense(hidden_dim)
+        self.bn1 = BatchNormalization()
+        self.dropout = Dropout(dropout)
+        self.dense2 = Dense(output_dim)
+        self.bn2 = BatchNormalization()
         
-    def forward(self, x):
+    def call(self, x, training=False):
         """Forward pass through the encoder."""
-        return self.layers(x)
+        x = self.dense1(x)
+        x = self.bn1(x, training=training)
+        x = tf.nn.relu(x)
+        x = self.dropout(x, training=training)
+        x = self.dense2(x)
+        x = self.bn2(x, training=training)
+        return x
 
 
-class MultiOmicsGNN(nn.Module):
-    """GNN-based model for multi-omics data integration."""
+class MultiOmicsGNN(Model):
+    """GNN-based model for multi-omics data integration in TensorFlow."""
     
     def __init__(self, omics_dims, hidden_dim=256, embedding_dim=128, gnn_type='GCN', 
                  num_gnn_layers=2, dropout=0.2, task_type='regression', num_tasks=1):
@@ -56,7 +60,7 @@ class MultiOmicsGNN(nn.Module):
             num_gnn_layers (int, optional): Number of GNN layers. Defaults to 2.
             dropout (float, optional): Dropout rate. Defaults to 0.2.
             task_type (str, optional): Type of task ('regression' or 'classification'). Defaults to 'regression'.
-            num_tasks (int, optional): Number of tasks (e.g., number of drugs for drug response). Defaults to 1.
+            num_tasks (int, optional): Number of tasks. Defaults to 1.
         """
         super(MultiOmicsGNN, self).__init__()
         
@@ -66,7 +70,7 @@ class MultiOmicsGNN(nn.Module):
         self.num_tasks = num_tasks
         
         # Create encoders for each omics type
-        self.encoders = nn.ModuleDict({
+        self.encoders = {
             omics_type: OmicsEncoder(
                 input_dim=dim,
                 hidden_dim=hidden_dim,
@@ -74,40 +78,29 @@ class MultiOmicsGNN(nn.Module):
                 dropout=dropout
             )
             for omics_type, dim in omics_dims.items()
-        })
+        }
         
         # GNN layers
-        self.gnn_layers = nn.ModuleList()
-        
+        self.gnn_layers = []
         for _ in range(num_gnn_layers):
             if gnn_type == 'GCN':
-                self.gnn_layers.append(GCNConv(embedding_dim, embedding_dim))
+                self.gnn_layers.append(tfgnn.layers.GCNConv(embedding_dim))
             elif gnn_type == 'GAT':
-                self.gnn_layers.append(GATConv(embedding_dim, embedding_dim))
-            elif gnn_type == 'SAGE':
-                self.gnn_layers.append(SAGEConv(embedding_dim, embedding_dim))
-            elif gnn_type == 'GIN':
-                nn_layer = nn.Sequential(
-                    nn.Linear(embedding_dim, embedding_dim),
-                    nn.ReLU(),
-                    nn.Linear(embedding_dim, embedding_dim)
-                )
-                self.gnn_layers.append(GINConv(nn_layer))
+                self.gnn_layers.append(tfgnn.layers.GATConv(embedding_dim))
             else:
                 raise ValueError(f"Unsupported GNN type: {gnn_type}")
         
         # Prediction layers
-        self.prediction_layers = nn.Sequential(
-            nn.Linear(embedding_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, num_tasks)
-        )
+        self.prediction_layers = [
+            Dense(hidden_dim, activation='relu'),
+            Dropout(dropout),
+            Dense(num_tasks)
+        ]
         
         if task_type == 'classification':
-            self.final_activation = nn.Sigmoid()
+            self.final_activation = tf.nn.sigmoid
         else:  # regression
-            self.final_activation = nn.Identity()
+            self.final_activation = tf.identity
     
     def _construct_graph(self, omics_embeddings, adjacency_matrix=None):
         """
@@ -115,11 +108,11 @@ class MultiOmicsGNN(nn.Module):
         
         Args:
             omics_embeddings (dict): Dictionary mapping omics types to their embeddings
-            adjacency_matrix (torch.Tensor, optional): Predefined adjacency matrix for the graph.
+            adjacency_matrix (tf.Tensor, optional): Predefined adjacency matrix for the graph.
                 If None, a fully connected graph is created. Defaults to None.
         
         Returns:
-            torch_geometric.data.Data: The constructed graph
+            tfgnn.GraphTensor: The constructed graph
         """
         # Concatenate all node features (omics embeddings)
         nodes = []
@@ -129,12 +122,12 @@ class MultiOmicsGNN(nn.Module):
             nodes.append(embedding)
             node_types.extend([i] * embedding.shape[0])
         
-        x = torch.cat(nodes, dim=0)
-        node_types = torch.tensor(node_types, device=x.device)
+        x = tf.concat(nodes, axis=0)
+        node_types = tf.convert_to_tensor(node_types, dtype=tf.int32)
         
         # Create edges (either from adjacency matrix or fully connected)
         if adjacency_matrix is not None:
-            edge_index = adjacency_matrix.nonzero().t().contiguous()
+            edge_index = tf.where(adjacency_matrix)
         else:
             # Create a fully connected graph
             num_nodes = x.shape[0]
@@ -147,49 +140,72 @@ class MultiOmicsGNN(nn.Module):
                         source_nodes.append(i)
                         target_nodes.append(j)
             
-            edge_index = torch.tensor([source_nodes, target_nodes], device=x.device)
+            edge_index = tf.stack([source_nodes, target_nodes], axis=0)
         
-        return Data(x=x, edge_index=edge_index, node_type=node_types)
+        # Create graph tensor
+        graph = tfgnn.GraphTensor.from_pieces(
+            node_sets={
+                'nodes': tfgnn.NodeSet.from_fields(
+                    sizes=tf.shape(x)[0:1],
+                    features={'features': x, 'type': node_types}
+                )
+            },
+            edge_sets={
+                'edges': tfgnn.EdgeSet.from_fields(
+                    sizes=tf.shape(edge_index)[1:2],
+                    adjacency=tfgnn.Adjacency.from_indices(
+                        source=('nodes', edge_index[0]),
+                        target=('nodes', edge_index[1])
+                    )
+                )
+            }
+        )
+        
+        return graph
     
-    def forward(self, omics_data, adjacency_matrix=None):
+    def call(self, omics_data, adjacency_matrix=None, training=False):
         """
         Forward pass through the multi-omics GNN model.
         
         Args:
             omics_data (dict): Dictionary mapping omics types to their data tensors
-            adjacency_matrix (torch.Tensor, optional): Predefined adjacency matrix. Defaults to None.
+            adjacency_matrix (tf.Tensor, optional): Predefined adjacency matrix. Defaults to None.
+            training (bool, optional): Whether the model is in training mode. Defaults to False.
         
         Returns:
-            torch.Tensor: Model predictions
+            tf.Tensor: Model predictions
         """
         # Encode each omics type
         omics_embeddings = {}
         for omics_type in self.omics_types:
             if omics_type in omics_data:
-                omics_embeddings[omics_type] = self.encoders[omics_type](omics_data[omics_type])
+                omics_embeddings[omics_type] = self.encoders[omics_type](
+                    omics_data[omics_type], training=training
+                )
         
         # Construct graph
         graph = self._construct_graph(omics_embeddings, adjacency_matrix)
         
         # Apply GNN layers
-        x, edge_index = graph.x, graph.edge_index
+        x = graph.node_sets['nodes']['features']
         for gnn_layer in self.gnn_layers:
-            x = gnn_layer(x, edge_index)
-            x = F.relu(x)
-            x = F.dropout(x, p=0.2, training=self.training)
+            x = gnn_layer(graph, node_set_name='nodes', feature_name='features')
+            x = tf.nn.relu(x)
+            x = tf.nn.dropout(x, rate=0.2, training=training)
         
         # Readout: average the node embeddings
-        graph_embedding = torch.mean(x, dim=0)
+        graph_embedding = tf.reduce_mean(x, axis=0)
         
         # Prediction
-        predictions = self.prediction_layers(graph_embedding)
+        for layer in self.prediction_layers:
+            graph_embedding = layer(graph_embedding, training=training)
         
-        return self.final_activation(predictions)
+        return self.final_activation(graph_embedding)
 
 
-class HeterogeneousOmicsGNN(nn.Module):
+class HeterogeneousOmicsGNN(Model):
     """
-    Heterogeneous Graph Neural Network for multi-omics integration.
+    Heterogeneous Graph Neural Network for multi-omics integration in TensorFlow.
     This model handles different types of nodes (omics) and relationships between them.
     """
     
@@ -215,7 +231,7 @@ class HeterogeneousOmicsGNN(nn.Module):
         self.num_tasks = num_tasks
         
         # Create encoders for each omics type
-        self.encoders = nn.ModuleDict({
+        self.encoders = {
             omics_type: OmicsEncoder(
                 input_dim=dim,
                 hidden_dim=hidden_dim,
@@ -223,36 +239,33 @@ class HeterogeneousOmicsGNN(nn.Module):
                 dropout=dropout
             )
             for omics_type, dim in omics_dims.items()
-        })
+        }
         
-        # Heterogeneous GNN layers (simplified version)
-        # In a real implementation, you would use a framework like PyTorch Geometric's 
-        # HeteroConv or DGL's RelGraphConv for proper heterogeneous graph convolutions
-        self.hgnn_layers = nn.ModuleList()
+        # Heterogeneous GNN layers
+        self.hgnn_layers = []
         for _ in range(num_gnn_layers):
             # One GCNConv per omics type relation
-            relation_convs = nn.ModuleDict()
+            relation_convs = {}
             for src_type in self.omics_types:
                 for dst_type in self.omics_types:
                     relation_name = f"{src_type}_to_{dst_type}"
-                    relation_convs[relation_name] = GCNConv(embedding_dim, embedding_dim)
+                    relation_convs[relation_name] = tfgnn.layers.GCNConv(embedding_dim)
             
             self.hgnn_layers.append(relation_convs)
         
-        # Prediction layers (similar to the homogeneous case)
-        self.prediction_layers = nn.Sequential(
-            nn.Linear(embedding_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, num_tasks)
-        )
+        # Prediction layers
+        self.prediction_layers = [
+            Dense(hidden_dim, activation='relu'),
+            Dropout(dropout),
+            Dense(num_tasks)
+        ]
         
         if task_type == 'classification':
-            self.final_activation = nn.Sigmoid()
+            self.final_activation = tf.nn.sigmoid
         else:  # regression
-            self.final_activation = nn.Identity()
+            self.final_activation = tf.identity
     
-    def forward(self, omics_data, edge_indices_dict):
+    def call(self, omics_data, edge_indices_dict, training=False):
         """
         Forward pass through the heterogeneous multi-omics GNN model.
         
@@ -260,19 +273,25 @@ class HeterogeneousOmicsGNN(nn.Module):
             omics_data (dict): Dictionary mapping omics types to their data tensors
             edge_indices_dict (dict): Dictionary mapping relation names to edge indices
                 Format: {f"{src_type}_to_{dst_type}": edge_index_tensor}
+            training (bool, optional): Whether the model is in training mode. Defaults to False.
         
         Returns:
-            torch.Tensor: Model predictions
+            tf.Tensor: Model predictions
         """
         # Encode each omics type
         node_features = {}
         for omics_type in self.omics_types:
             if omics_type in omics_data:
-                node_features[omics_type] = self.encoders[omics_type](omics_data[omics_type])
+                node_features[omics_type] = self.encoders[omics_type](
+                    omics_data[omics_type], training=training
+                )
         
         # Apply heterogeneous GNN layers
         for layer in self.hgnn_layers:
-            new_features = {omics_type: torch.zeros_like(feat) for omics_type, feat in node_features.items()}
+            new_features = {
+                omics_type: tf.zeros_like(feat)
+                for omics_type, feat in node_features.items()
+            }
             
             # Aggregate messages from each relation
             for src_type in self.omics_types:
@@ -283,23 +302,44 @@ class HeterogeneousOmicsGNN(nn.Module):
                         edge_index = edge_indices_dict[relation_name]
                         conv = layer[relation_name]
                         
-                        # Apply the appropriate convolution
-                        src_features = node_features[src_type]
-                        dst_features = conv(src_features, edge_index)
+                        # Create graph for this relation
+                        graph = tfgnn.GraphTensor.from_pieces(
+                            node_sets={
+                                'nodes': tfgnn.NodeSet.from_fields(
+                                    sizes=tf.shape(node_features[src_type])[0:1],
+                                    features={'features': node_features[src_type]}
+                                )
+                            },
+                            edge_sets={
+                                'edges': tfgnn.EdgeSet.from_fields(
+                                    sizes=tf.shape(edge_index)[1:2],
+                                    adjacency=tfgnn.Adjacency.from_indices(
+                                        source=('nodes', edge_index[0]),
+                                        target=('nodes', edge_index[1])
+                                    )
+                                )
+                            }
+                        )
                         
-                        # Add to the destination features
+                        # Apply the appropriate convolution
+                        dst_features = conv(graph, node_set_name='nodes', feature_name='features')
                         new_features[dst_type] += dst_features
             
             # Apply non-linearity and update features
             for omics_type in self.omics_types:
-                node_features[omics_type] = F.relu(new_features[omics_type])
-                node_features[omics_type] = F.dropout(node_features[omics_type], p=0.2, training=self.training)
+                node_features[omics_type] = tf.nn.relu(new_features[omics_type])
+                node_features[omics_type] = tf.nn.dropout(
+                    node_features[omics_type], rate=0.2, training=training
+                )
         
         # Readout: average the node embeddings from all omics types
-        all_embeddings = torch.cat([node_features[omics_type] for omics_type in self.omics_types], dim=0)
-        graph_embedding = torch.mean(all_embeddings, dim=0)
+        all_embeddings = tf.concat(
+            [node_features[omics_type] for omics_type in self.omics_types], axis=0
+        )
+        graph_embedding = tf.reduce_mean(all_embeddings, axis=0)
         
         # Prediction
-        predictions = self.prediction_layers(graph_embedding)
+        for layer in self.prediction_layers:
+            graph_embedding = layer(graph_embedding, training=training)
         
-        return self.final_activation(predictions)
+        return self.final_activation(graph_embedding) 

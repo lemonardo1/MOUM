@@ -1,46 +1,46 @@
-# Configuration for Multi-omics GNN Integration Model
+# Multi-omics GNN 통합 모델 설정
 
-# Data parameters
-test_size: 0.2
-random_seed: 42
-correlation_thresholds:
-  - ['gene_expression', 'methylation', 0.4]
-  - ['gene_expression', 'copy_number', 0.4]
-  - ['methylation', 'copy_number', 0.4]
+# 데이터 파라미터
+test_size: 0.2  # 테스트 데이터셋 비율
+random_seed: 42  # 랜덤 시드 (재현성 확보)
+correlation_thresholds:  # 오믹스 데이터 간 상관관계 임계값
+  - ['gene_expression', 'methylation', 0.4]  # 유전자 발현과 메틸화 데이터 간 상관관계
+  - ['gene_expression', 'copy_number', 0.4]  # 유전자 발현과 복제수 변이 간 상관관계
+  - ['methylation', 'copy_number', 0.4]  # 메틸화와 복제수 변이 간 상관관계
 
-# Model parameters
-gnn_type: 'GCN'  # Options: 'GCN', 'GAT', 'SAGE', 'GIN'
-hidden_dim: 256
-embedding_dim: 128
-num_gnn_layers: 2
-dropout: 0.2
-task_type: 'regression'  # Options: 'regression', 'classification'
+# 모델 파라미터
+gnn_type: 'GCN'  # GNN 레이어 타입 (GCN, GAT, SAGE, GIN 중 선택)
+hidden_dim: 256  # 은닉층 차원
+embedding_dim: 128  # 임베딩 차원
+num_gnn_layers: 2  # GNN 레이어 개수
+dropout: 0.2  # 드롭아웃 비율
+task_type: 'regression'  # 작업 타입 (regression 또는 classification)
 
-# Generator parameters
+# 기본 생성기 파라미터
 generator:
-  latent_dim: 64
-  hidden_dim: 256
-  gnn_type: 'GCN'  # Options: 'GCN', 'GAT', 'SAGE', 'GIN'
-  num_gnn_layers: 2
-  dropout: 0.2
-  condition_dim: 32  # For conditional generation
+  latent_dim: 64  # 잠재 공간 차원
+  hidden_dim: 256  # 은닉층 차원
+  gnn_type: 'GCN'  # GNN 레이어 타입
+  num_gnn_layers: 2  # GNN 레이어 개수
+  dropout: 0.2  # 드롭아웃 비율
+  condition_dim: 32  # 조건 벡터 차원 (조건부 생성 시 사용)
 
-# Advanced Generator parameters
+# 고급 생성기 파라미터
 advanced_generator:
-  latent_dim: 64
-  hidden_dim: 256
-  gnn_type: 'GCN'  # Options: 'GCN', 'GAT', 'SAGE', 'GIN'
-  num_gnn_layers: 2
-  num_heads: 4  # Number of attention heads
-  dropout: 0.2
-  condition_dim: 32  # For conditional generation
-  use_residual: true  # Whether to use residual connections
-  use_layer_norm: true  # Whether to use layer normalization
-  top_k_edges: 5  # Number of edges to keep in attention-based graph construction
+  latent_dim: 64  # 잠재 공간 차원
+  hidden_dim: 256  # 은닉층 차원
+  gnn_type: 'GCN'  # GNN 레이어 타입
+  num_gnn_layers: 2  # GNN 레이어 개수
+  num_heads: 4  # 어텐션 헤드 개수
+  dropout: 0.2  # 드롭아웃 비율
+  condition_dim: 32  # 조건 벡터 차원
+  use_residual: true  # 잔차 연결 사용 여부
+  use_layer_norm: true  # 레이어 정규화 사용 여부
+  top_k_edges: 5  # 어텐션 기반 그래프 구성 시 유지할 엣지 개수
 
-# Training parameters
-num_epochs: 100
-batch_size: 32
-learning_rate: 0.001
-weight_decay: 0.0001
-patience: 10  # For early stopping
+# 학습 파라미터
+num_epochs: 100  # 학습 에포크 수
+batch_size: 32  # 배치 크기
+learning_rate: 0.001  # 학습률
+weight_decay: 0.0001  # 가중치 감소 (L2 정규화)
+patience: 10  # 조기 중단을 위한 인내심 (에포크 수)

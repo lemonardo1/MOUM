@@ -1,23 +1,21 @@
 """
-Training script for GNN-based multi-omics integration models.
+Training script for GNN-based multi-omics integration models in TensorFlow.
 
 This script provides functionality to train and evaluate GNN-based models
-for integrating multiple types of omics data.
+for integrating multiple types of omics data using TensorFlow.
 """
 
 import os
 import argparse
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+import tensorflow as tf
+from tensorflow.keras import optimizers, callbacks
 from sklearn.metrics import mean_squared_error, r2_score, roc_auc_score, accuracy_score
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from models.gnn_integration import MultiOmicsGNN, HeterogeneousOmicsGNN
+from models.tf_gnn_integration import MultiOmicsGNN, HeterogeneousOmicsGNN
 from data.data_processor import MultiOmicsDataset, load_sample_data
 from utils.config import load_config
 
@@ -28,12 +26,12 @@ def train_model(model, train_data, train_response, edge_indices_dict=None,
     Train the GNN-based multi-omics integration model.
     
     Args:
-        model (nn.Module): GNN model to train
+        model (tf.keras.Model): GNN model to train
         train_data (dict): Dictionary of training data for each omics type
-        train_response (torch.Tensor): Training response values
+        train_response (tf.Tensor): Training response values
         edge_indices_dict (dict, optional): Dictionary of edge indices for heterogeneous GNN
         val_data (dict, optional): Dictionary of validation data for each omics type
-        val_response (torch.Tensor, optional): Validation response values
+        val_response (tf.Tensor, optional): Validation response values
         config (dict, optional): Configuration parameters. Defaults to None.
     
     Returns:
@@ -48,42 +46,35 @@ def train_model(model, train_data, train_response, edge_indices_dict=None,
             'patience': 10,
             'task_type': 'regression'
         }
-    
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
+    # log config
+    print(f"Training config: {config}")
     
     # Define loss function based on task type
     if config['task_type'] == 'classification':
-        criterion = nn.BCELoss()
+        loss_fn = tf.keras.losses.BinaryCrossentropy()
     else:  # regression
-        criterion = nn.MSELoss()
+        loss_fn = tf.keras.losses.MeanSquaredError()
     
     # Optimizer
-    optimizer = optim.Adam(
-        model.parameters(), 
-        lr=config['learning_rate'],
+    optimizer = optimizers.Adam(
+        learning_rate=config['learning_rate'],
         weight_decay=config['weight_decay']
     )
     
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, verbose=True
+    lr_scheduler = callbacks.ReduceLROnPlateau(
+        monitor='val_loss' if val_data is not None else 'loss',
+        factor=0.5,
+        patience=5,
+        verbose=1
     )
     
-    # Move data to device
-    for omics_type in train_data:
-        train_data[omics_type] = train_data[omics_type].to(device)
-    
-    train_response = train_response.to(device)
-    
-    if val_data is not None and val_response is not None:
-        for omics_type in val_data:
-            val_data[omics_type] = val_data[omics_type].to(device)
-        val_response = val_response.to(device)
-    
-    if edge_indices_dict is not None:
-        for relation in edge_indices_dict:
-            edge_indices_dict[relation] = edge_indices_dict[relation].to(device)
+    # Early stopping
+    early_stopping = callbacks.EarlyStopping(
+        monitor='val_loss' if val_data is not None else 'loss',
+        patience=config['patience'],
+        restore_best_weights=True
+    )
     
     # Training history
     history = {
@@ -92,72 +83,52 @@ def train_model(model, train_data, train_response, edge_indices_dict=None,
         'learning_rates': []
     }
     
-    # Early stopping
-    best_val_loss = float('inf')
-    early_stop_counter = 0
-    best_model_state = None
-    
     # Training loop
     for epoch in range(config['num_epochs']):
-        model.train()
+        # Training step
+        with tf.GradientTape() as tape:
+            if isinstance(model, HeterogeneousOmicsGNN):
+                predictions = model(train_data, edge_indices_dict, training=True)
+            else:
+                predictions = model(train_data, training=True)
+            
+            loss = loss_fn(train_response, predictions)
         
-        # Forward pass
-        if isinstance(model, HeterogeneousOmicsGNN):
-            outputs = model(train_data, edge_indices_dict)
-        else:
-            outputs = model(train_data)
-        
-        loss = criterion(outputs, train_response)
-        
-        # Backward pass and optimization
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # Compute gradients and update weights
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         
         # Record training loss
-        history['train_loss'].append(loss.item())
-        history['learning_rates'].append(optimizer.param_groups[0]['lr'])
+        history['train_loss'].append(loss.numpy())
+        history['learning_rates'].append(optimizer.learning_rate.numpy())
         
         # Validation
         if val_data is not None and val_response is not None:
-            model.eval()
-            with torch.no_grad():
-                if isinstance(model, HeterogeneousOmicsGNN):
-                    val_outputs = model(val_data, edge_indices_dict)
-                else:
-                    val_outputs = model(val_data)
-                
-                val_loss = criterion(val_outputs, val_response)
-                history['val_loss'].append(val_loss.item())
-                
-                # Print progress
-                print(f"Epoch {epoch+1}/{config['num_epochs']}, "
-                      f"Train Loss: {loss.item():.4f}, "
-                      f"Val Loss: {val_loss.item():.4f}")
-                
-                # Learning rate scheduling
-                scheduler.step(val_loss)
-                
-                # Early stopping
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    early_stop_counter = 0
-                    best_model_state = model.state_dict().copy()
-                else:
-                    early_stop_counter += 1
-                
-                if early_stop_counter >= config['patience']:
-                    print(f"Early stopping triggered after {epoch+1} epochs")
-                    model.load_state_dict(best_model_state)
-                    break
+            if isinstance(model, HeterogeneousOmicsGNN):
+                val_predictions = model(val_data, edge_indices_dict, training=False)
+            else:
+                val_predictions = model(val_data, training=False)
+            
+            val_loss = loss_fn(val_response, val_predictions)
+            history['val_loss'].append(val_loss.numpy())
+            
+            # Print progress
+            print(f"Epoch {epoch+1}/{config['num_epochs']}, "
+                  f"Train Loss: {loss.numpy():.4f}, "
+                  f"Val Loss: {val_loss.numpy():.4f}")
+            
+            # Learning rate scheduling
+            lr_scheduler.on_epoch_end(epoch, {'val_loss': val_loss.numpy()})
+            
+            # Early stopping
+            early_stopping.on_epoch_end(epoch, {'val_loss': val_loss.numpy()})
+            if early_stopping.stopped_epoch > 0:
+                print(f"Early stopping triggered after {epoch+1} epochs")
+                break
         else:
             # Print progress
             print(f"Epoch {epoch+1}/{config['num_epochs']}, "
-                  f"Train Loss: {loss.item():.4f}")
-    
-    # Load best model if early stopping was triggered
-    if val_data is not None and early_stop_counter < config['patience']:
-        model.load_state_dict(best_model_state)
+                  f"Train Loss: {loss.numpy():.4f}")
     
     return model, history
 
@@ -167,33 +138,24 @@ def evaluate_model(model, test_data, test_response, edge_indices_dict=None, task
     Evaluate the trained model.
     
     Args:
-        model (nn.Module): Trained GNN model
+        model (tf.keras.Model): Trained GNN model
         test_data (dict): Dictionary of test data for each omics type
-        test_response (torch.Tensor): Test response values
+        test_response (tf.Tensor): Test response values
         edge_indices_dict (dict, optional): Dictionary of edge indices for heterogeneous GNN
         task_type (str, optional): Type of task ('regression' or 'classification')
     
     Returns:
         dict: Evaluation metrics
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    
-    # Move data to device
-    for omics_type in test_data:
-        test_data[omics_type] = test_data[omics_type].to(device)
-    
     # Evaluation mode
-    model.eval()
-    with torch.no_grad():
-        if isinstance(model, HeterogeneousOmicsGNN) and edge_indices_dict is not None:
-            predictions = model(test_data, edge_indices_dict)
-        else:
-            predictions = model(test_data)
+    if isinstance(model, HeterogeneousOmicsGNN) and edge_indices_dict is not None:
+        predictions = model(test_data, edge_indices_dict, training=False)
+    else:
+        predictions = model(test_data, training=False)
     
     # Convert to numpy for evaluation
-    predictions = predictions.cpu().numpy()
-    test_response = test_response.cpu().numpy()
+    predictions = predictions.numpy()
+    test_response = test_response.numpy()
     
     # Calculate metrics based on task type
     metrics = {}
@@ -316,6 +278,12 @@ def main():
     train_data, train_response = dataset.get_train_data()
     test_data, test_response = dataset.get_test_data()
     
+    # Convert data to TensorFlow tensors
+    train_data = {k: tf.convert_to_tensor(v) for k, v in train_data.items()}
+    train_response = tf.convert_to_tensor(train_response)
+    test_data = {k: tf.convert_to_tensor(v) for k, v in test_data.items()}
+    test_response = tf.convert_to_tensor(test_response)
+    
     # Create adjacency matrices for heterogeneous GNN
     edge_indices_dict = None
     if args.model_type == 'heterogeneous':
@@ -323,6 +291,9 @@ def main():
         edge_indices_dict = dataset.create_adjacency_matrices(
             thresholds=config.get('correlation_thresholds', {})
         )
+        edge_indices_dict = {
+            k: tf.convert_to_tensor(v) for k, v in edge_indices_dict.items()
+        }
     
     # Create model
     print(f"Creating {args.model_type} GNN model...")
@@ -379,13 +350,10 @@ def main():
     )
     
     # Save model
-    torch.save(
-        trained_model.state_dict(),
-        os.path.join(args.output_dir, 'model.pt')
-    )
+    trained_model.save(os.path.join(args.output_dir, 'model'))
     
     print(f"Model and results saved to {args.output_dir}")
 
 
 if __name__ == "__main__":
-    main()
+    main() 
