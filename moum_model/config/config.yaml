@@ -1,0 +1,46 @@
+# Configuration for Multi-omics GNN Integration Model
+
+# Data parameters
+test_size: 0.2
+random_seed: 42
+correlation_thresholds:
+  - ['gene_expression', 'methylation', 0.4]
+  - ['gene_expression', 'copy_number', 0.4]
+  - ['methylation', 'copy_number', 0.4]
+
+# Model parameters
+gnn_type: 'GCN'  # Options: 'GCN', 'GAT', 'SAGE', 'GIN'
+hidden_dim: 256
+embedding_dim: 128
+num_gnn_layers: 2
+dropout: 0.2
+task_type: 'regression'  # Options: 'regression', 'classification'
+
+# Generator parameters
+generator:
+  latent_dim: 64
+  hidden_dim: 256
+  gnn_type: 'GCN'  # Options: 'GCN', 'GAT', 'SAGE', 'GIN'
+  num_gnn_layers: 2
+  dropout: 0.2
+  condition_dim: 32  # For conditional generation
+
+# Advanced Generator parameters
+advanced_generator:
+  latent_dim: 64
+  hidden_dim: 256
+  gnn_type: 'GCN'  # Options: 'GCN', 'GAT', 'SAGE', 'GIN'
+  num_gnn_layers: 2
+  num_heads: 4  # Number of attention heads
+  dropout: 0.2
+  condition_dim: 32  # For conditional generation
+  use_residual: true  # Whether to use residual connections
+  use_layer_norm: true  # Whether to use layer normalization
+  top_k_edges: 5  # Number of edges to keep in attention-based graph construction
+
+# Training parameters
+num_epochs: 100
+batch_size: 32
+learning_rate: 0.001
+weight_decay: 0.0001
+patience: 10  # For early stopping
