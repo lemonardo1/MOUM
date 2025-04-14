@@ -4,7 +4,7 @@
 
 본 프로젝트는 multi-omics 데이터를 활용한 약물 반응 예측 모델 개발을 목표로 합니다.
 
-## 설치 방법
+## 설치 방법 (python version 3.11)
 
 ```
 conda activate MOUM_TENSORFLOW
